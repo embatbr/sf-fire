@@ -1,0 +1,4 @@
+desc.pdf
+*.~lock.*
+
+data/Fire_Incidents_*.csv
