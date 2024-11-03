@@ -1,10 +1,9 @@
--- public.raw_fire_incidents definition
+DROP TABLE IF EXISTS landing_zone CASCADE;
 
--- Drop table
 
-DROP TABLE IF EXISTS public.raw_fire_incidents;
+CREATE SCHEMA landing_zone;
 
-CREATE TABLE public.raw_fire_incidents (
+CREATE TABLE landing_zone.fire_incidents (
     "Incident Number" text NULL,
     "Exposure Number" int4 NULL,
     "ID" text NULL,

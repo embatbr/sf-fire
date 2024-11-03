@@ -30,7 +30,7 @@ DB_PROPERTIES = {
 }
 
 DB_TABLES = {
-    "raw": "raw_fire_incidents"
+    "raw": "landing_zone.fire_incidents"
 }
 
 
