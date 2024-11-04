@@ -5,7 +5,7 @@ export PROJECT_ROOT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd ${PROJECT_ROOT_PATH}
 
 
-export EXECUTION_DATE=$1
+export EXECUTION_DATE=$1 # e.g., 20241029
 export POSTGRES_JAR=postgresql-42.7.4.jar
 export POSTGRES_JAR_PATH=${PROJECT_ROOT_PATH}/lib/${POSTGRES_JAR}
 
