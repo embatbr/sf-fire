@@ -4,7 +4,7 @@
 import os
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf
+from pyspark.sql.functions import col, udf
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.types import FloatType, DateType, TimestampType
 from shapely import from_wkt
@@ -30,7 +30,29 @@ DB_PROPERTIES = {
 }
 
 DB_TABLES = {
-    "raw": "landing_zone.fire_incidents"
+    "raw": "landing.fire_incidents",
+    "dimensions": {
+        "Incident Date": {
+            "table": "business.dim_incident_dates",
+            "table_column": "incident_date",
+            "fk_column": "incident_date_id"
+        },
+        "Battalion": {
+            "table": "business.dim_battalions",
+            "table_column": "battalion",
+            "fk_column": "battalion_id"
+        },
+        "Supervisor District": {
+            "table": "business.dim_supervisor_districts",
+            "table_column": "supervisor_district",
+            "fk_column": "supervisor_district_id"
+        },
+        "neighborhood_district": {
+            "table": "business.dim_neighborhood_districts",
+            "table_column": "neighborhood_district",
+            "fk_column": "neighborhood_district_id"
+        }
+    }
 }
 
 
@@ -81,15 +103,25 @@ def get_csv(spark_session, csv_path, schema=None):
     return df_reader.csv(csv_path)
 
 
-def save_to_raw_table(spark_session, dataframe):
+def write_to_table(spark_session, dataframe, table):
     dataframe.write \
              .option("stringtype", "unspecified") \
              .jdbc(
                  DB_URL,
-                 DB_TABLES["raw"],
+                 table,
                  mode="append", # mode="overwrite",
                  properties=DB_PROPERTIES
              )
+
+
+def read_from_table(spark_session, table):
+    return spark_session.read \
+                        .jdbc(
+                            DB_URL,
+                            table,
+                            properties=DB_PROPERTIES
+                        )
+
 
 def get_wkt_point(wkt_point):
     point = from_wkt(wkt_point)
@@ -100,6 +132,47 @@ def get_wkt_point(wkt_point):
 wkt_point_udf = udf(get_wkt_point, returnType=StringType())
 
 
+def create_dim_table(spark_session, dataframe, column):
+    dim_table = DB_TABLES["dimensions"][column]["table"]
+    dim_table_column = DB_TABLES["dimensions"][column]["table_column"]
+    fact_fk_column = DB_TABLES["dimensions"][column]["fk_column"]
+
+    dim_dataframe = dataframe.select(
+                                 col(column).alias(dim_table_column)
+                             ) \
+                             .distinct() \
+                             .where(
+                                 col(column).isNotNull()
+                             )
+    write_to_table(spark_session, dim_dataframe, dim_table) # gonna break when running for several days
+    dim_dataframe = read_from_table(spark_session, dim_table) # just to get the PK
+
+    dataframe = dataframe.join(
+        dim_dataframe,
+        dataframe[column] == dim_dataframe[dim_table_column],
+        "left_outer"
+    )
+    dataframe = dataframe.drop(column)
+    dataframe = dataframe.drop(dim_table_column)
+    dataframe = dataframe.withColumnRenamed("_table_id", fact_fk_column)
+
+    return dataframe
+
+
+def rename_all_columns(dataframe):
+    columns = dataframe.columns
+
+    # this loop is suboptimal, but...
+    for column in columns:
+        new_column = column.lower().replace(' ', '_')
+        dataframe = dataframe.withColumnRenamed(column, new_column)
+
+    dataframe = dataframe.withColumnRenamed("box", "city_box")
+    dataframe = dataframe.withColumnRenamed("point", "point_location")
+
+    return dataframe
+
+
 spark_session = SparkSession.builder \
                             .appName("sf-fire") \
                             .config("spark.jars", f"{POSTGRES_JAR_PATH}") \
@@ -108,18 +181,16 @@ spark_session = SparkSession.builder \
 schema = get_schema(spark_session, DICTIONARY_PATH)
 dataframe = get_csv(spark_session, CSVFILE_PATH, schema=schema) # enforcing schema
 dataframe = dataframe.withColumn('point', wkt_point_udf(dataframe.point))
-save_to_raw_table(spark_session, dataframe)
+write_to_table(spark_session, dataframe, DB_TABLES["raw"])
+dataframe = create_dim_table(spark_session, dataframe, "Incident Date")
+dataframe = create_dim_table(spark_session, dataframe, "Battalion")
+dataframe = create_dim_table(spark_session, dataframe, "Supervisor District")
+dataframe = create_dim_table(spark_session, dataframe, "neighborhood_district")
+dataframe = rename_all_columns(dataframe)
+write_to_table(spark_session, dataframe, "business.fact_fire_incidents")
 
-# # testing
-# dataframe_columns = dataframe.columns
-# first_row = dataframe.first().asDict()
 # print()
 # dataframe.printSchema()
-# print()
-# print(dataframe_columns)
-# print()
-# for key, value in first_row.items():
-#     print(f'"{key}": {value} ({type(value)})')
 # print()
 
 spark_session.stop()
