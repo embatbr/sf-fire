@@ -23,4 +23,4 @@ psql -U postgres -c "CREATE DATABASE ${DB_NAME} WITH OWNER = ${DB_USER};"
 
 
 # creating the raw table
-PGPASSWORD=${DB_PWD} psql -U ${DB_USER} -d ${DB_NAME} -f ${PROJECT_ROOT_PATH}/src/raw_fire_incidents.sql
+PGPASSWORD=${DB_PWD} psql -U ${DB_USER} -d ${DB_NAME} -f ${PROJECT_ROOT_PATH}/src/creates.sql
